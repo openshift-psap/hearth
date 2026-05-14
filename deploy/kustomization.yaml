@@ -6,4 +6,7 @@ resources:
   - sa.yaml
   - clusterrole.yaml
   - clusterrolebinding.yaml
+  - secrets-role.yaml
+  - secrets-rolebinding.yaml
+  - imagestream.yaml
   - deployment.yaml

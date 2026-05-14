@@ -83,7 +83,7 @@ class KueueClient:
                 logger.debug("Flavor %s already in ClusterQueue %s", flavor_name, cq_name)
                 return None
 
-        covered = rg.get("coveredResources", [])
+        covered = list(rg.get("coveredResources", []))
         resources: list[dict] = []
         for resource_name in covered:
             if resource_name == CLUSTER_SLOT_RESOURCE:
@@ -93,6 +93,9 @@ class KueueClient:
 
         if not any(r["name"] == CLUSTER_SLOT_RESOURCE for r in resources):
             resources.append({"name": CLUSTER_SLOT_RESOURCE, "nominalQuota": MAX_CLUSTER_SLOTS})
+        if CLUSTER_SLOT_RESOURCE not in covered:
+            covered.append(CLUSTER_SLOT_RESOURCE)
+        rg["coveredResources"] = sorted(covered)
 
         flavors.append({"name": flavor_name, "resources": resources})
         rg["flavors"] = flavors

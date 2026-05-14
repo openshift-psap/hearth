@@ -82,14 +82,24 @@ class GPUDiscoveryClient:
 
         raw = None
         if secret.data and "kubeconfig" in secret.data:
-            raw = base64.b64decode(secret.data["kubeconfig"]).decode()
+            try:
+                raw = base64.b64decode(secret.data["kubeconfig"]).decode()
+            except Exception as exc:
+                raise GPUDiscoveryError(
+                    f"Secret {secret_name!r} has invalid base64 kubeconfig data"
+                ) from exc
 
         if not raw:
             raise GPUDiscoveryError(
                 f"Secret {secret_name!r} has no 'kubeconfig' key"
             )
 
-        parsed = yaml.safe_load(raw)
+        try:
+            parsed = yaml.safe_load(raw)
+        except Exception as exc:
+            raise GPUDiscoveryError(
+                f"Secret {secret_name!r} kubeconfig is not valid YAML"
+            ) from exc
 
         if isinstance(parsed, str):
             try:

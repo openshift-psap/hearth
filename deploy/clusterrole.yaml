@@ -18,10 +18,8 @@ rules:
   - apiGroups: ["fournos.dev"]
     resources: ["fournosjobs"]
     verbs: ["create", "get", "delete"]
-  # Kubeconfig secrets + kopf annotations
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "patch"]
+  # kopf annotations on secrets (patch only, scoped via Role in psap-secrets)
+  # Cluster-wide secret rules removed — see secrets-role.yaml
   # Events
   - apiGroups: [""]
     resources: ["events"]

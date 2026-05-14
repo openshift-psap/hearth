@@ -102,6 +102,27 @@ class TestAddFlavorToClusterQueue:
 
         assert result is None
 
+    def test_adds_cluster_slot_to_covered_resources(self) -> None:
+        cq = {
+            "spec": {
+                "resourceGroups": [
+                    {
+                        "coveredResources": ["fournos/gpu-a100"],
+                        "flavors": [],
+                    }
+                ]
+            }
+        }
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = cq
+        kueue = KueueClient(mock_custom)
+
+        kueue.add_flavor_to_cluster_queue("new-cluster")
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        covered = body["spec"]["resourceGroups"][0]["coveredResources"]
+        assert "fournos/cluster-slot" in covered
+
     def test_preserves_existing_flavors(self) -> None:
         existing = [
             {

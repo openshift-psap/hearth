@@ -251,6 +251,28 @@ class TestGPUDiscoveryClient:
         with pytest.raises(GPUDiscoveryError, match="not valid YAML"):
             discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
 
+    def test_invalid_base64_raises_discovery_error(self) -> None:
+        discovery, mock_core = self._make_client()
+        secret = MagicMock()
+        secret.data = {"kubeconfig": "not-valid-base64!!!"}
+        secret.string_data = None
+        mock_core.read_namespaced_secret.return_value = secret
+
+        with pytest.raises(GPUDiscoveryError, match="invalid base64"):
+            discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
+
+    def test_unparseable_yaml_raises_discovery_error(self) -> None:
+        import base64 as b64
+
+        discovery, mock_core = self._make_client()
+        secret = MagicMock()
+        secret.data = {"kubeconfig": b64.b64encode(b"{{invalid: yaml: [").decode()}
+        secret.string_data = None
+        mock_core.read_namespaced_secret.return_value = secret
+
+        with pytest.raises(GPUDiscoveryError, match="not valid YAML"):
+            discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
+
     @patch("hearth.core.gpu_discovery.k8s_config")
     @patch("hearth.core.gpu_discovery.client")
     def test_target_cluster_unreachable(
@@ -314,7 +336,7 @@ class TestGPUDiscoveryClient:
     def test_no_contexts_raises(self) -> None:
         discovery, mock_core = self._make_client()
 
-
+        import base64
         kubeconfig_yaml = "apiVersion: v1\nkind: Config\ncontexts: []\nclusters: []\nusers: []\n"
         secret = MagicMock()
         secret.data = {"kubeconfig": base64.b64encode(kubeconfig_yaml.encode()).decode()}
