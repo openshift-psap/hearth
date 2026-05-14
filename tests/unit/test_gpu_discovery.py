@@ -189,6 +189,13 @@ class TestGPUDiscoveryClient:
         with pytest.raises(GPUDiscoveryError, match="not found"):
             discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
 
+    def test_management_api_error_wrapped(self) -> None:
+        discovery, mock_core = self._make_client()
+        mock_core.read_namespaced_secret.side_effect = ApiException(status=403)
+
+        with pytest.raises(GPUDiscoveryError, match="Failed to read kubeconfig secret"):
+            discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
+
     def test_kubeconfig_secret_no_key(self) -> None:
         discovery, mock_core = self._make_client()
         secret = MagicMock()
@@ -292,10 +299,22 @@ class TestGPUDiscoveryClient:
         config_dict = mock_k8s_config.new_client_from_config_dict.call_args[0][0]
         assert config_dict["current-context"] == "my-ctx"
 
+    @patch("hearth.core.gpu_discovery.k8s_config")
+    def test_invalid_kubeconfig_structure(self, mock_k8s_config: MagicMock) -> None:
+        discovery, mock_core = self._make_client()
+        self._mock_kubeconfig_secret(mock_core)
+
+        mock_k8s_config.new_client_from_config_dict.side_effect = Exception(
+            "kubeconfig missing clusters"
+        )
+
+        with pytest.raises(GPUDiscoveryError, match="Invalid kubeconfig"):
+            discovery.discover_gpus("cluster-1", "kubeconfig-cluster-1", "psap-secrets")
+
     def test_no_contexts_raises(self) -> None:
         discovery, mock_core = self._make_client()
 
-        import base64
+
         kubeconfig_yaml = "apiVersion: v1\nkind: Config\ncontexts: []\nclusters: []\nusers: []\n"
         secret = MagicMock()
         secret.data = {"kubeconfig": base64.b64encode(kubeconfig_yaml.encode()).decode()}
