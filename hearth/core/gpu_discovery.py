@@ -76,7 +76,9 @@ class GPUDiscoveryClient:
                 raise GPUDiscoveryError(
                     f"Kubeconfig secret {secret_name!r} not found in {namespace}"
                 ) from exc
-            raise
+            raise GPUDiscoveryError(
+                f"Failed to read kubeconfig secret {secret_name!r} from {namespace}: {exc}"
+            ) from exc
 
         raw = None
         if secret.data and "kubeconfig" in secret.data:
@@ -92,8 +94,12 @@ class GPUDiscoveryClient:
         if isinstance(parsed, str):
             try:
                 parsed = yaml.safe_load(base64.b64decode(parsed).decode())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Secret %r: double-base64 decode failed, will attempt as raw YAML: %s",
+                    secret_name,
+                    exc,
+                )
 
         if not isinstance(parsed, dict):
             raise GPUDiscoveryError(
@@ -120,7 +126,12 @@ class GPUDiscoveryClient:
                     f"Kubeconfig for {cluster_name!r} has no contexts"
                 )
 
-        api_client = k8s_config.new_client_from_config_dict(kubeconfig_dict)
+        try:
+            api_client = k8s_config.new_client_from_config_dict(kubeconfig_dict)
+        except Exception as exc:
+            raise GPUDiscoveryError(
+                f"Invalid kubeconfig for cluster {cluster_name!r}: {exc}"
+            ) from exc
         timeout = (settings.gpu_discovery_timeout_sec, settings.gpu_discovery_timeout_sec)
 
         try:
