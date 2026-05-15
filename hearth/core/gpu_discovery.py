@@ -64,13 +64,9 @@ class GPUDiscoveryClient:
     def __init__(self, management_core: client.CoreV1Api) -> None:
         self._management_core = management_core
 
-    def _read_kubeconfig_from_secret(
-        self, secret_name: str, namespace: str
-    ) -> dict:
+    def _read_kubeconfig_from_secret(self, secret_name: str, namespace: str) -> dict:
         try:
-            secret = self._management_core.read_namespaced_secret(
-                secret_name, namespace
-            )
+            secret = self._management_core.read_namespaced_secret(secret_name, namespace)
         except client.exceptions.ApiException as exc:
             if exc.status == 404:
                 raise GPUDiscoveryError(
@@ -90,16 +86,12 @@ class GPUDiscoveryClient:
                 ) from exc
 
         if not raw:
-            raise GPUDiscoveryError(
-                f"Secret {secret_name!r} has no 'kubeconfig' key"
-            )
+            raise GPUDiscoveryError(f"Secret {secret_name!r} has no 'kubeconfig' key")
 
         try:
             parsed = yaml.safe_load(raw)
         except Exception as exc:
-            raise GPUDiscoveryError(
-                f"Secret {secret_name!r} kubeconfig is not valid YAML"
-            ) from exc
+            raise GPUDiscoveryError(f"Secret {secret_name!r} kubeconfig is not valid YAML") from exc
 
         if isinstance(parsed, str):
             try:
@@ -112,9 +104,7 @@ class GPUDiscoveryClient:
                 )
 
         if not isinstance(parsed, dict):
-            raise GPUDiscoveryError(
-                f"Secret {secret_name!r} kubeconfig is not valid YAML"
-            )
+            raise GPUDiscoveryError(f"Secret {secret_name!r} kubeconfig is not valid YAML")
         return parsed
 
     def discover_gpus(
@@ -123,18 +113,14 @@ class GPUDiscoveryClient:
         kubeconfig_secret: str,
         secrets_namespace: str,
     ) -> DiscoveryResult:
-        kubeconfig_dict = self._read_kubeconfig_from_secret(
-            kubeconfig_secret, secrets_namespace
-        )
+        kubeconfig_dict = self._read_kubeconfig_from_secret(kubeconfig_secret, secrets_namespace)
 
         if "current-context" not in kubeconfig_dict:
             contexts = kubeconfig_dict.get("contexts", [])
             if contexts:
                 kubeconfig_dict["current-context"] = contexts[0]["name"]
             else:
-                raise GPUDiscoveryError(
-                    f"Kubeconfig for {cluster_name!r} has no contexts"
-                )
+                raise GPUDiscoveryError(f"Kubeconfig for {cluster_name!r} has no contexts")
 
         try:
             api_client = k8s_config.new_client_from_config_dict(kubeconfig_dict)

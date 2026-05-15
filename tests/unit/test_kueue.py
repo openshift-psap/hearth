@@ -11,7 +11,6 @@ from hearth.core.kueue import KueueClient
 
 
 class TestCreateFlavor:
-
     def test_creates_with_correct_spec(self) -> None:
         mock_custom = MagicMock()
         kueue = KueueClient(mock_custom)
@@ -42,7 +41,6 @@ class TestCreateFlavor:
 
 
 class TestAddFlavorToClusterQueue:
-
     def _make_cq(self, existing_flavors: list[dict] | None = None) -> dict:
         return {
             "spec": {
@@ -52,7 +50,8 @@ class TestAddFlavorToClusterQueue:
                             "fournos/cluster-slot",
                             "fournos/gpu-a100",
                         ],
-                        "flavors": existing_flavors or [
+                        "flavors": existing_flavors
+                        or [
                             {
                                 "name": "existing-cluster",
                                 "resources": [
@@ -154,7 +153,6 @@ class TestAddFlavorToClusterQueue:
 
 
 class TestUpdateFlavorQuotas:
-
     def _make_cq_with_flavor(self, flavor_name: str) -> dict:
         return {
             "spec": {
@@ -252,7 +250,6 @@ class TestUpdateFlavorQuotas:
 
 
 class TestListFlavors:
-
     def test_returns_flavor_names(self) -> None:
         mock_custom = MagicMock()
         mock_custom.list_cluster_custom_object.return_value = {

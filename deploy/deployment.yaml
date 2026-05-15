@@ -3,6 +3,10 @@ kind: Deployment
 metadata:
   name: hearth
   namespace: hearth
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"hearth:latest"},
+        "fieldPath":"spec.template.spec.containers[?(@.name==\"hearth\")].image"}]
 spec:
   replicas: 1
   selector:
@@ -23,6 +27,8 @@ spec:
               value: hearth
             - name: HEARTH_SECRETS_NAMESPACE
               value: psap-secrets
+            - name: HEARTH_EXECUTION_NAMESPACE
+              value: psap-automation
           ports:
             - containerPort: 8080
               name: healthz

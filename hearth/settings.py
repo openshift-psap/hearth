@@ -13,6 +13,10 @@ class Settings(BaseSettings):
         default="psap-secrets",
         description="Namespace where kubeconfig secrets are stored",
     )
+    execution_namespace: str = Field(
+        default="psap-automation",
+        description="Namespace where FournosJobs run (sentinel jobs created here)",
+    )
     kubeconfig_secret_pattern: str = "kubeconfig-{cluster}"
     kueue_cluster_queue_name: str = "fournos-queue"
     gpu_resource_prefix: str = "fournos/gpu-"

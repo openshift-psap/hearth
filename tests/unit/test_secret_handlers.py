@@ -11,7 +11,6 @@ from hearth.handlers.secret import extract_cluster_name, on_kubeconfig_secret
 
 
 class TestExtractClusterName:
-
     def test_default_pattern(self) -> None:
         assert extract_cluster_name("kubeconfig-cluster-1") == "cluster-1"
 
@@ -26,7 +25,6 @@ class TestExtractClusterName:
 
 
 class TestOnKubeconfigSecret:
-
     @pytest.fixture(autouse=True)
     def _setup(self) -> None:
         patcher = patch("hearth.handlers.secret.client")

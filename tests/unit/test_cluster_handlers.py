@@ -22,7 +22,6 @@ from hearth.handlers.cluster import (
 
 
 class TestParseDuration:
-
     def test_minutes(self) -> None:
         assert parse_duration("30m") == timedelta(minutes=30)
 
@@ -52,7 +51,6 @@ class TestParseDuration:
 
 
 class TestBuildGPUSummary:
-
     def test_single_gpu(self) -> None:
         gpus = [{"shortName": "a100", "count": 8}]
         assert _build_gpu_summary(gpus) == "8x A100"
@@ -69,7 +67,6 @@ class TestBuildGPUSummary:
 
 
 class _PatchBase:
-
     @pytest.fixture(autouse=True)
     def _setup_ctx(self) -> None:
         self.mock_gpu_discovery = MagicMock()
@@ -100,7 +97,6 @@ class _PatchBase:
 
 
 class TestOnCreate(_PatchBase):
-
     @patch("hearth.handlers.cluster._check_kubeconfig", return_value="Valid")
     def test_initializes_status(self, mock_check: MagicMock) -> None:
         patch_obj = self._make_patch()
@@ -156,14 +152,11 @@ class TestOnCreate(_PatchBase):
 
 
 class TestOwnerChange(_PatchBase):
-
     def test_lock_creates_sentinel(self) -> None:
         patch_obj = self._make_patch()
         spec = {"kubeconfigSecret": "kc", "ttl": "4h"}
 
-        on_owner_change(
-            spec, "cluster-1", "ns", {}, patch_obj, {}, old="", new="nathan"
-        )
+        on_owner_change(spec, "cluster-1", "ns", {}, patch_obj, {}, old="", new="nathan")
 
         assert patch_obj.status["locked"] is True
         assert patch_obj.status["lockJobName"] == "cluster-lock-cluster-1"
@@ -222,7 +215,6 @@ class TestOwnerChange(_PatchBase):
 
 
 class TestHardwareChange(_PatchBase):
-
     def test_updates_cq_quotas(self) -> None:
         patch_obj = self._make_patch()
         new_hw = {
@@ -230,7 +222,9 @@ class TestHardwareChange(_PatchBase):
             "totalGPUs": 8,
         }
 
-        on_hardware_change(spec={"hardware": new_hw}, name="cluster-1", old={}, new=new_hw, patch=patch_obj)
+        on_hardware_change(
+            spec={"hardware": new_hw}, name="cluster-1", old={}, new=new_hw, patch=patch_obj
+        )
 
         self.mock_kueue.update_flavor_quotas.assert_called_once_with("cluster-1", [("a100", 8)])
         assert patch_obj.status["gpuSummary"] == "8x A100"
@@ -246,14 +240,15 @@ class TestHardwareChange(_PatchBase):
         patch_obj = self._make_patch()
         new_hw = {"gpus": [], "totalGPUs": 0}
 
-        on_hardware_change(spec={"hardware": new_hw}, name="cluster-1", old={}, new=new_hw, patch=patch_obj)
+        on_hardware_change(
+            spec={"hardware": new_hw}, name="cluster-1", old={}, new=new_hw, patch=patch_obj
+        )
 
         self.mock_kueue.update_flavor_quotas.assert_not_called()
         assert patch_obj.status["gpuSummary"] == ""
 
 
 class TestReconcileTTLExpiry(_PatchBase):
-
     def test_expired_lock(self) -> None:
         patch_obj = self._make_patch()
         expired = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -295,7 +290,6 @@ class TestReconcileTTLExpiry(_PatchBase):
 
 
 class TestReconcileGPUDiscovery(_PatchBase):
-
     def test_skips_when_kubeconfig_invalid(self) -> None:
         patch_obj = self._make_patch()
         status = {"kubeconfigStatus": "Missing"}
@@ -376,7 +370,6 @@ class TestReconcileGPUDiscovery(_PatchBase):
 
 
 class TestReconcileLockJob(_PatchBase):
-
     def test_skips_when_not_locked(self) -> None:
         patch_obj = self._make_patch()
         status = {"locked": False}
@@ -419,7 +412,6 @@ class TestReconcileLockJob(_PatchBase):
 
 
 class TestReconcileFull(_PatchBase):
-
     @patch("hearth.handlers.cluster._reconcile_lock_job")
     @patch("hearth.handlers.cluster._reconcile_gpu_discovery")
     @patch("hearth.handlers.cluster._reconcile_ttl_expiry")

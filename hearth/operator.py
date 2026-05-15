@@ -67,8 +67,15 @@ def on_cluster_create(spec, name, namespace, status, patch, body, **kwargs):
 @kopf.on.field(CRD_GROUP, CRD_VERSION, FOURNOS_CLUSTER_PLURAL, field="spec.owner")
 def on_owner_change(spec, name, namespace, status, patch, body, old, new, **kwargs):
     cluster.on_owner_change(
-        spec=spec, name=name, namespace=namespace, status=status,
-        patch=patch, body=body, old=old, new=new, **kwargs
+        spec=spec,
+        name=name,
+        namespace=namespace,
+        status=status,
+        patch=patch,
+        body=body,
+        old=old,
+        new=new,
+        **kwargs,
     )
 
 

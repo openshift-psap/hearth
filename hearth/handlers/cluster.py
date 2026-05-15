@@ -183,7 +183,7 @@ def _create_sentinel_job(cluster_name: str, job_name: str, owner: str) -> None:
         "kind": "FournosJob",
         "metadata": {
             "name": job_name,
-            "namespace": settings.namespace,
+            "namespace": settings.execution_namespace,
             "labels": {
                 LABEL_CLUSTER_LOCK: cluster_name,
             },
@@ -202,7 +202,7 @@ def _create_sentinel_job(cluster_name: str, job_name: str, owner: str) -> None:
         custom.create_namespaced_custom_object(
             group=CRD_GROUP,
             version=CRD_VERSION,
-            namespace=settings.namespace,
+            namespace=settings.execution_namespace,
             plural=FOURNOSJOB_PLURAL,
             body=body,
         )
@@ -220,7 +220,7 @@ def _delete_sentinel_job(job_name: str) -> None:
         custom.delete_namespaced_custom_object(
             group=CRD_GROUP,
             version=CRD_VERSION,
-            namespace=settings.namespace,
+            namespace=settings.execution_namespace,
             plural=FOURNOSJOB_PLURAL,
             name=job_name,
         )
@@ -277,9 +277,7 @@ def _reconcile_ttl_expiry(spec, name, status, patch):
 
     if datetime.now(timezone.utc) >= expires_at:
         prev_owner = spec.get("owner", "unknown")
-        logger.info(
-            "FournosCluster %s: ownership expired (was owned by %s)", name, prev_owner
-        )
+        logger.info("FournosCluster %s: ownership expired (was owned by %s)", name, prev_owner)
         patch.spec["owner"] = ""
         _release_lock(name, patch)
 
@@ -373,7 +371,7 @@ def _reconcile_lock_job(spec, name, status, patch):
         custom.get_namespaced_custom_object(
             group=CRD_GROUP,
             version=CRD_VERSION,
-            namespace=settings.namespace,
+            namespace=settings.execution_namespace,
             plural=FOURNOSJOB_PLURAL,
             name=lock_job,
         )
@@ -393,6 +391,4 @@ def _reconcile_lock_job(spec, name, status, patch):
                 )
                 _release_lock(name, patch)
         else:
-            logger.warning(
-                "FournosCluster %s: failed to check sentinel job: %s", name, exc
-            )
+            logger.warning("FournosCluster %s: failed to check sentinel job: %s", name, exc)

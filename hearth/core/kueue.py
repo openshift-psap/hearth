@@ -159,11 +159,7 @@ class KueueClient:
             new_resources.append({"name": resource_name, "nominalQuota": count})
 
         existing_slot = next(
-            (
-                r
-                for r in target_flavor.get("resources", [])
-                if r["name"] == CLUSTER_SLOT_RESOURCE
-            ),
+            (r for r in target_flavor.get("resources", []) if r["name"] == CLUSTER_SLOT_RESOURCE),
             None,
         )
         slot_quota = existing_slot["nominalQuota"] if existing_slot else MAX_CLUSTER_SLOTS
@@ -178,9 +174,7 @@ class KueueClient:
             existing_names = {r["name"] for r in f.get("resources", [])}
             for resource_name in rg["coveredResources"]:
                 if resource_name not in existing_names:
-                    f.setdefault("resources", []).append(
-                        {"name": resource_name, "nominalQuota": 0}
-                    )
+                    f.setdefault("resources", []).append({"name": resource_name, "nominalQuota": 0})
 
         result = self._k8s.patch_cluster_custom_object(
             group=KUEUE_GROUP,

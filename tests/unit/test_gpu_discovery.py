@@ -17,7 +17,6 @@ from hearth.core.gpu_discovery import (
 
 
 class TestNormalizeGPUModel:
-
     @pytest.mark.parametrize(
         "raw,expected",
         [
@@ -46,7 +45,6 @@ class TestNormalizeGPUModel:
 
 
 class TestGPUDiscoveryClient:
-
     def _make_client(self) -> tuple[GPUDiscoveryClient, MagicMock]:
         mock_core = MagicMock()
         return GPUDiscoveryClient(mock_core), mock_core
@@ -77,6 +75,7 @@ class TestGPUDiscoveryClient:
 
     def _mock_kubeconfig_secret(self, mock_core: MagicMock) -> None:
         import base64
+
         kubeconfig = (
             "apiVersion: v1\nkind: Config\n"
             "current-context: default\n"
@@ -143,9 +142,7 @@ class TestGPUDiscoveryClient:
 
     @patch("hearth.core.gpu_discovery.k8s_config")
     @patch("hearth.core.gpu_discovery.client")
-    def test_discover_no_gpus(
-        self, mock_k8s_client: MagicMock, mock_k8s_config: MagicMock
-    ) -> None:
+    def test_discover_no_gpus(self, mock_k8s_client: MagicMock, mock_k8s_config: MagicMock) -> None:
         discovery, mock_core = self._make_client()
         self._mock_kubeconfig_secret(mock_core)
 
@@ -221,9 +218,7 @@ class TestGPUDiscoveryClient:
             "contexts:\n- name: default\n  context:\n    cluster: c1\n"
             "clusters: []\nusers: []\n"
         )
-        double_encoded = b64.b64encode(
-            b64.b64encode(kubeconfig.encode())
-        ).decode()
+        double_encoded = b64.b64encode(b64.b64encode(kubeconfig.encode())).decode()
 
         secret = MagicMock()
         secret.data = {"kubeconfig": double_encoded}
@@ -305,6 +300,7 @@ class TestGPUDiscoveryClient:
             "clusters: []\nusers: []\n"
         )
         import base64
+
         secret = MagicMock()
         secret.data = {"kubeconfig": base64.b64encode(kubeconfig_yaml.encode()).decode()}
         secret.string_data = None
@@ -337,6 +333,7 @@ class TestGPUDiscoveryClient:
         discovery, mock_core = self._make_client()
 
         import base64
+
         kubeconfig_yaml = "apiVersion: v1\nkind: Config\ncontexts: []\nclusters: []\nusers: []\n"
         secret = MagicMock()
         secret.data = {"kubeconfig": base64.b64encode(kubeconfig_yaml.encode()).decode()}
@@ -366,21 +363,21 @@ class TestGPUDiscoveryClient:
 
 
 class TestDiscoveredGPU:
-
     def test_frozen(self) -> None:
         gpu = DiscoveredGPU(vendor="nvidia", model="A100", short_name="a100", count=8, node_count=2)
         with pytest.raises(AttributeError):
             gpu.count = 16
 
     def test_fields(self) -> None:
-        gpu = DiscoveredGPU(vendor="amd", model="MI300X", short_name="mi300x", count=4, node_count=1)
+        gpu = DiscoveredGPU(
+            vendor="amd", model="MI300X", short_name="mi300x", count=4, node_count=1
+        )
         assert gpu.vendor == "amd"
         assert gpu.short_name == "mi300x"
         assert gpu.count == 4
 
 
 class TestDiscoveryResult:
-
     def test_frozen(self) -> None:
         result = DiscoveryResult(gpus=(), total_gpus=0, timestamp="2026-04-29T00:00:00Z")
         with pytest.raises(AttributeError):
