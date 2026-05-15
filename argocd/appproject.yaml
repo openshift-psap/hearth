@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hearth
+  namespace: openshift-gitops
+spec:
+  description: Hearth — GPU cluster lifecycle operator
+  sourceRepos:
+    - https://github.com/openshift-psap/hearth.git
+  destinations:
+    - namespace: hearth
+      server: https://kubernetes.default.svc
+    - namespace: psap-secrets
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: Namespace
+    - group: apps
+      kind: Deployment
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: image.openshift.io
+      kind: ImageStream
