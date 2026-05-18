@@ -12,7 +12,7 @@ rules:
     verbs: ["get", "list", "watch"]
   # FournosCluster CRD
   - apiGroups: ["fournos.dev"]
-    resources: ["fournoscluster", "fournoscluster/status", "fournoscluster/finalizers"]
+    resources: ["fournosclusters", "fournosclusters/status", "fournosclusters/finalizers"]
     verbs: ["create", "get", "list", "watch", "patch", "update"]
   # Sentinel FournosJob for cluster locking
   - apiGroups: ["fournos.dev"]

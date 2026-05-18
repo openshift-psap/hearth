@@ -68,7 +68,7 @@ def _check_kubeconfig(spec: dict) -> str:
 
 
 def _lock_job_name(cluster_name: str) -> str:
-    return f"cluster-lock-{cluster_name}"
+    return f"hearth-lock-{cluster_name}"
 
 
 # ---------------------------------------------------------------------------

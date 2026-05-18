@@ -69,7 +69,7 @@ oc get pods -n hearth -l app=hearth
 oc logs -n hearth -l app=hearth | grep -v healthz | head -20
 
 # RBAC
-oc auth can-i --as=system:serviceaccount:hearth:hearth list fournoscluster.fournos.dev
+oc auth can-i --as=system:serviceaccount:hearth:hearth list fournosclusters.fournos.dev
 
 # Discovered clusters
 oc get fournoscluster -n hearth
@@ -329,15 +329,6 @@ Check for RBAC errors in logs. Common causes:
 - Target cluster may not have GPU Feature Discovery (GFD) installed. Without GFD, `nvidia.com/gpu.product` labels are missing on nodes.
 - GPUs are still detected via `nvidia.com/gpu` allocatable resources but show as generic `NVIDIA` instead of specific model.
 - Check discovery errors: `oc get fournoscluster <name> -n hearth -o jsonpath='{.spec.hardware.lastError}'`
-
-### Sentinel FournosJob in Failed state with "Pipeline not found"
-
-The fournos execution controller must support the `lockOnly` field (PR [#89](https://github.com/openshift-psap/fournos/pull/89)). Without it, the controller treats the sentinel as a regular job and tries to create a Tekton PipelineRun, which fails. Verify the FournosJob CRD includes the `lockOnly` field:
-
-```bash
-oc get crd fournosjobs.fournos.dev -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.lockOnly.type}'
-# Expected: boolean
-```
 
 ### Sentinel FournosJob stuck in Pending
 

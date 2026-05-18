@@ -159,12 +159,12 @@ class TestOwnerChange(_PatchBase):
         on_owner_change(spec, "cluster-1", "ns", {}, patch_obj, {}, old="", new="nathan")
 
         assert patch_obj.status["locked"] is True
-        assert patch_obj.status["lockJobName"] == "cluster-lock-cluster-1"
+        assert patch_obj.status["lockJobName"] == "hearth-lock-cluster-1"
         assert patch_obj.status["lockExpiresAt"] is not None
 
         self.mock_custom_api.create_namespaced_custom_object.assert_called_once()
         body = self.mock_custom_api.create_namespaced_custom_object.call_args[1]["body"]
-        assert body["metadata"]["name"] == "cluster-lock-cluster-1"
+        assert body["metadata"]["name"] == "hearth-lock-cluster-1"
         assert body["spec"]["lockOnly"] is True
         assert body["spec"]["exclusive"] is True
 
