@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 def startup(**_kwargs):
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     logging.basicConfig(level=log_level, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    # Prevent kubernetes client from dumping full HTTP response bodies (includes secrets)
+    logging.getLogger("kubernetes.client.rest").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     try:
         config.load_incluster_config()
