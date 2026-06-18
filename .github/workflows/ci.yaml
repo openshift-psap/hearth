@@ -51,5 +51,7 @@ jobs:
         run: |
           podman tag hearth:${{ github.sha }} quay.io/rh_perfscale/hearth:${{ github.sha }}
           podman tag hearth:${{ github.sha }} quay.io/rh_perfscale/hearth:latest
+          podman tag hearth:${{ github.sha }} quay.io/rh_perfscale/hearth:hearth-controller
           podman push quay.io/rh_perfscale/hearth:${{ github.sha }}
           podman push quay.io/rh_perfscale/hearth:latest
+          podman push quay.io/rh_perfscale/hearth:hearth-controller
