@@ -35,13 +35,22 @@ class TestNormalizeGPUModel:
         result = _normalize_gpu_model("NVIDIA-A100-NEW-VARIANT-96GB")
         assert result == "a100"
 
-    def test_unknown_model_lowercased(self) -> None:
+    def test_nvidia_l40s_fallback(self) -> None:
+        assert _normalize_gpu_model("NVIDIA-L40S") == "l40s"
+
+    def test_nvidia_b200_fallback(self) -> None:
+        assert _normalize_gpu_model("NVIDIA-B200-SXM") == "b200sxm"
+
+    def test_nvidia_a10g_fallback(self) -> None:
+        assert _normalize_gpu_model("NVIDIA-A10G") == "a10g"
+
+    def test_unknown_model_alphanumeric(self) -> None:
         result = _normalize_gpu_model("SOME-UNKNOWN-GPU")
-        assert result == "some-unknown-gpu"
+        assert result == "someunknowngpu"
 
     def test_unknown_with_spaces(self) -> None:
         result = _normalize_gpu_model("NVIDIA Tesla V100")
-        assert result == "nvidia-tesla-v100"
+        assert result == "nvidiateslav100"
 
 
 class TestGPUDiscoveryClient:
