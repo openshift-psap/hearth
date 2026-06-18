@@ -63,7 +63,7 @@ def _normalize_gpu_model(raw_model: str) -> str:
     normalized = raw_model.lower()
     for prefix in ("nvidia-", "amd-instinct-", "amd-"):
         if normalized.startswith(prefix):
-            normalized = normalized[len(prefix):]
+            normalized = normalized[len(prefix) :]
             break
     return re.sub(r"[^a-z0-9]", "", normalized)
 
