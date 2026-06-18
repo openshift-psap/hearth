@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -57,7 +58,14 @@ def _normalize_gpu_model(raw_model: str) -> str:
         base = "-".join(known.split("-")[:2])
         if raw_model.startswith(base):
             return short
-    return raw_model.lower().replace(" ", "-")
+    # Fallback: strip vendor prefix and non-alphanumeric chars for CRD compatibility.
+    # Examples: NVIDIA-L40S -> l40s, NVIDIA-B200-SXM -> b200sxm, NVIDIA-A10G -> a10g
+    normalized = raw_model.lower()
+    for prefix in ("nvidia-", "amd-instinct-", "amd-"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    return re.sub(r"[^a-z0-9]", "", normalized)
 
 
 class GPUDiscoveryClient:
