@@ -9,4 +9,5 @@ resources:
   - secrets-role.yaml
   - secrets-rolebinding.yaml
   - imagestream.yaml
+  - workload-priorities.yaml
   - deployment.yaml
