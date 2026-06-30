@@ -17,6 +17,12 @@ spec:
       kind: ClusterRole
     - group: rbac.authorization.k8s.io
       kind: ClusterRoleBinding
+    - group: kueue.x-k8s.io
+      kind: ClusterQueue
+    - group: kueue.x-k8s.io
+      kind: ResourceFlavor
+    - group: kueue.x-k8s.io
+      kind: WorkloadPriorityClass
   namespaceResourceWhitelist:
     - group: ""
       kind: ServiceAccount

@@ -1,0 +1,27 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: manual
+value: 200
+description: "Manual user-triggered runs (highest priority)"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: nightly
+value: 100
+description: "Nightly benchmark runs"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: presubmit
+value: 50
+description: "PR presubmit runs (CI triggers)"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: adhoc
+value: 10
+description: "Ad-hoc / low-priority runs"
