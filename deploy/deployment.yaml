@@ -18,6 +18,10 @@ spec:
         app: hearth
     spec:
       serviceAccountName: hearth
+      hostAliases:
+        - ip: 10.14.217.8
+          hostnames:
+            - api.openshift.nm.rdu4.corp.redhat.com
       containers:
         - name: hearth
           image: quay.io/rh_perfscale/hearth:latest
