@@ -83,19 +83,32 @@ class KueueClient:
                 logger.debug("Flavor %s already in ClusterQueue %s", flavor_name, cq_name)
                 return None
 
-        covered = list(rg.get("coveredResources", []))
-        resources: list[dict] = []
-        for resource_name in covered:
-            if resource_name == CLUSTER_SLOT_RESOURCE:
-                resources.append({"name": CLUSTER_SLOT_RESOURCE, "nominalQuota": MAX_CLUSTER_SLOTS})
-            else:
-                resources.append({"name": resource_name, "nominalQuota": 0})
+        covered = set(rg.get("coveredResources", []))
+        for flavor in flavors:
+            covered.update(resource["name"] for resource in flavor.get("resources", []))
+        covered.add(CLUSTER_SLOT_RESOURCE)
+        covered_resources = sorted(covered)
 
-        if not any(r["name"] == CLUSTER_SLOT_RESOURCE for r in resources):
-            resources.append({"name": CLUSTER_SLOT_RESOURCE, "nominalQuota": MAX_CLUSTER_SLOTS})
-        if CLUSTER_SLOT_RESOURCE not in covered:
-            covered.append(CLUSTER_SLOT_RESOURCE)
-        rg["coveredResources"] = sorted(covered)
+        # Kueue requires every flavor's resource list to have the same order as
+        # coveredResources. Normalize existing flavors before adding a new one.
+        for flavor in flavors:
+            quotas = {
+                resource["name"]: resource["nominalQuota"]
+                for resource in flavor.get("resources", [])
+            }
+            flavor["resources"] = [
+                {"name": resource_name, "nominalQuota": quotas.get(resource_name, 0)}
+                for resource_name in covered_resources
+            ]
+
+        resources = [
+            {
+                "name": resource_name,
+                "nominalQuota": MAX_CLUSTER_SLOTS if resource_name == CLUSTER_SLOT_RESOURCE else 0,
+            }
+            for resource_name in covered_resources
+        ]
+        rg["coveredResources"] = covered_resources
 
         flavors.append({"name": flavor_name, "resources": resources})
         rg["flavors"] = flavors
@@ -138,6 +151,9 @@ class KueueClient:
         covered = set(rg.get("coveredResources", []))
         flavors = rg.get("flavors", [])
 
+        for flavor in flavors:
+            covered.update(resource["name"] for resource in flavor.get("resources", []))
+
         target_flavor = None
         for f in flavors:
             if f["name"] == flavor_name:
@@ -152,29 +168,38 @@ class KueueClient:
             )
             return None
 
-        new_resources: list[dict] = []
+        target_quotas: dict[str, int] = {}
         for short_name, count in gpu_resources:
             resource_name = self._gpu_resource_name(short_name)
             covered.add(resource_name)
-            new_resources.append({"name": resource_name, "nominalQuota": count})
+            target_quotas[resource_name] = count
 
         existing_slot = next(
             (r for r in target_flavor.get("resources", []) if r["name"] == CLUSTER_SLOT_RESOURCE),
             None,
         )
         slot_quota = existing_slot["nominalQuota"] if existing_slot else MAX_CLUSTER_SLOTS
-        new_resources.append({"name": CLUSTER_SLOT_RESOURCE, "nominalQuota": slot_quota})
+        target_quotas[CLUSTER_SLOT_RESOURCE] = slot_quota
         covered.add(CLUSTER_SLOT_RESOURCE)
 
-        rg["coveredResources"] = sorted(covered)
-        target_flavor["resources"] = new_resources
+        covered_resources = sorted(covered)
+        rg["coveredResources"] = covered_resources
 
-        # Backfill: ensure every flavor has an entry for every covered resource
-        for f in flavors:
-            existing_names = {r["name"] for r in f.get("resources", [])}
-            for resource_name in rg["coveredResources"]:
-                if resource_name not in existing_names:
-                    f.setdefault("resources", []).append({"name": resource_name, "nominalQuota": 0})
+        # Kueue validates resource list positions against coveredResources. Rebuild
+        # every flavor in that exact order while preserving existing quotas.
+        for flavor in flavors:
+            quotas = (
+                target_quotas
+                if flavor["name"] == flavor_name
+                else {
+                    resource["name"]: resource["nominalQuota"]
+                    for resource in flavor.get("resources", [])
+                }
+            )
+            flavor["resources"] = [
+                {"name": resource_name, "nominalQuota": quotas.get(resource_name, 0)}
+                for resource_name in covered_resources
+            ]
 
         result = self._k8s.patch_cluster_custom_object(
             group=KUEUE_GROUP,

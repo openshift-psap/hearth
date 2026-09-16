@@ -151,6 +151,28 @@ class TestAddFlavorToClusterQueue:
         assert flavors[0]["name"] == "cluster-a"
         assert flavors[1]["name"] == "cluster-b"
 
+    def test_normalizes_existing_flavor_resource_order(self) -> None:
+        existing = [
+            {
+                "name": "cluster-a",
+                "resources": [
+                    {"name": "fournos/gpu-a100", "nominalQuota": 4},
+                    {"name": "fournos/cluster-slot", "nominalQuota": 100},
+                ],
+            }
+        ]
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = self._make_cq(existing)
+        kueue = KueueClient(mock_custom)
+
+        kueue.add_flavor_to_cluster_queue("cluster-b")
+
+        rg = mock_custom.patch_cluster_custom_object.call_args[1]["body"]["spec"]["resourceGroups"][
+            0
+        ]
+        for flavor in rg["flavors"]:
+            assert [resource["name"] for resource in flavor["resources"]] == rg["coveredResources"]
+
 
 class TestUpdateFlavorQuotas:
     def _make_cq_with_flavor(self, flavor_name: str) -> dict:
@@ -247,6 +269,68 @@ class TestUpdateFlavorQuotas:
 
         l40s_entry = next(r for r in cluster_b["resources"] if r["name"] == "fournos/gpu-l40s")
         assert l40s_entry["nominalQuota"] == 0
+
+    def test_normalizes_all_flavor_resource_order(self) -> None:
+        """Kueue validates every flavor's resources in coveredResources order."""
+        cq = {
+            "spec": {
+                "resourceGroups": [
+                    {
+                        "coveredResources": [
+                            "fournos/cluster-slot",
+                            "fournos/gpu-a100",
+                            "fournos/gpu-h100",
+                        ],
+                        "flavors": [
+                            {
+                                "name": "cluster-a",
+                                "resources": [
+                                    {"name": "fournos/gpu-h100", "nominalQuota": 8},
+                                    {"name": "fournos/cluster-slot", "nominalQuota": 100},
+                                    {"name": "fournos/gpu-a100", "nominalQuota": 0},
+                                ],
+                            },
+                            {
+                                "name": "cluster-b",
+                                "resources": [
+                                    {"name": "fournos/gpu-a100", "nominalQuota": 4},
+                                    {"name": "fournos/cluster-slot", "nominalQuota": 100},
+                                    {"name": "fournos/gpu-h100", "nominalQuota": 0},
+                                ],
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = cq
+        kueue = KueueClient(mock_custom)
+
+        kueue.update_flavor_quotas("cluster-a", [("h200", 16)])
+
+        rg = mock_custom.patch_cluster_custom_object.call_args[1]["body"]["spec"]["resourceGroups"][
+            0
+        ]
+        covered = rg["coveredResources"]
+        assert covered == sorted(covered)
+        for flavor in rg["flavors"]:
+            assert [resource["name"] for resource in flavor["resources"]] == covered
+
+        cluster_a = next(flavor for flavor in rg["flavors"] if flavor["name"] == "cluster-a")
+        quotas_a = {
+            resource["name"]: resource["nominalQuota"] for resource in cluster_a["resources"]
+        }
+        assert quotas_a["fournos/gpu-h200"] == 16
+        assert quotas_a["fournos/gpu-h100"] == 0
+        assert quotas_a["fournos/cluster-slot"] == 100
+
+        cluster_b = next(flavor for flavor in rg["flavors"] if flavor["name"] == "cluster-b")
+        quotas_b = {
+            resource["name"]: resource["nominalQuota"] for resource in cluster_b["resources"]
+        }
+        assert quotas_b["fournos/gpu-a100"] == 4
+        assert quotas_b["fournos/gpu-h200"] == 0
 
 
 class TestListFlavors:
