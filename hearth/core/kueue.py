@@ -4,7 +4,7 @@ import logging
 
 from kubernetes import client
 
-from hearth.constants import CLUSTER_SLOT_RESOURCE, MAX_CLUSTER_SLOTS
+from hearth.constants import CLUSTER_SLOT_RESOURCE, LABEL_FLAVOR_HEALTHY, MAX_CLUSTER_SLOTS
 from hearth.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,7 @@ class KueueClient:
         self,
         flavor_name: str,
         gpu_resources: list[tuple[str, int]],
+        cluster_slot_quota: int | None = None,
     ) -> dict | None:
         cq_name = settings.kueue_cluster_queue_name
         try:
@@ -158,11 +159,18 @@ class KueueClient:
             covered.add(resource_name)
             new_resources.append({"name": resource_name, "nominalQuota": count})
 
-        existing_slot = next(
-            (r for r in target_flavor.get("resources", []) if r["name"] == CLUSTER_SLOT_RESOURCE),
-            None,
-        )
-        slot_quota = existing_slot["nominalQuota"] if existing_slot else MAX_CLUSTER_SLOTS
+        if cluster_slot_quota is not None:
+            slot_quota = cluster_slot_quota
+        else:
+            existing_slot = next(
+                (
+                    r
+                    for r in target_flavor.get("resources", [])
+                    if r["name"] == CLUSTER_SLOT_RESOURCE
+                ),
+                None,
+            )
+            slot_quota = existing_slot["nominalQuota"] if existing_slot else MAX_CLUSTER_SLOTS
         new_resources.append({"name": CLUSTER_SLOT_RESOURCE, "nominalQuota": slot_quota})
         covered.add(CLUSTER_SLOT_RESOURCE)
 
@@ -190,3 +198,30 @@ class KueueClient:
             gpu_resources,
         )
         return result
+
+    def quarantine_flavor(self, flavor_name: str) -> dict | None:
+        """Zero every quota (GPU resources and cluster-slot) for a flavor.
+
+        Called when a cluster becomes unreachable, so Kueue stops admitting
+        new Workloads onto it while it's down.
+        """
+        return self.update_flavor_quotas(flavor_name, [], cluster_slot_quota=0)
+
+    def set_flavor_health(self, flavor_name: str, healthy: bool) -> None:
+        """Label a ResourceFlavor so other controllers (e.g. Fournos) can see
+        whether its cluster is currently reachable.
+        """
+        body = {"metadata": {"labels": {LABEL_FLAVOR_HEALTHY: "true" if healthy else "false"}}}
+        try:
+            self._k8s.patch_cluster_custom_object(
+                group=KUEUE_GROUP,
+                version=KUEUE_VERSION,
+                plural=KUEUE_RESOURCE_FLAVOR_PLURAL,
+                name=flavor_name,
+                body=body,
+            )
+        except client.exceptions.ApiException as exc:
+            if exc.status == 404:
+                logger.warning("ResourceFlavor %s not found, cannot set health label", flavor_name)
+                return
+            raise

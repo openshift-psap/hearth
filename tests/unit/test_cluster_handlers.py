@@ -116,6 +116,7 @@ class TestOnCreate(_PatchBase):
 
         self.mock_kueue.create_flavor.assert_called_once_with("cluster-1")
         self.mock_kueue.add_flavor_to_cluster_queue.assert_called_once_with("cluster-1")
+        self.mock_kueue.set_flavor_health.assert_called_once_with("cluster-1", healthy=True)
 
     @patch("hearth.handlers.cluster._check_kubeconfig", return_value="Missing")
     def test_missing_kubeconfig(self, mock_check: MagicMock) -> None:
@@ -367,6 +368,120 @@ class TestReconcileGPUDiscovery(_PatchBase):
 
         assert patch_obj.status["kubeconfigStatus"] == "Unreachable"
         assert patch_obj.spec["hardware"]["consecutiveFailures"] == 5
+
+    def test_five_failures_quarantines_flavor(self) -> None:
+        from hearth.core.gpu_discovery import GPUDiscoveryError
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Valid"}
+        spec = {
+            "kubeconfigSecret": "kc",
+            "gpuDiscoveryInterval": "5m",
+            "hardware": {"consecutiveFailures": 4},
+        }
+
+        self.mock_gpu_discovery.discover_gpus.side_effect = GPUDiscoveryError("timeout")
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        self.mock_kueue.quarantine_flavor.assert_called_once_with("cluster-1")
+        self.mock_kueue.set_flavor_health.assert_called_once_with("cluster-1", healthy=False)
+
+    def test_already_unreachable_does_not_requarantine(self) -> None:
+        from hearth.core.gpu_discovery import GPUDiscoveryError
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Unreachable"}
+        spec = {
+            "kubeconfigSecret": "kc",
+            "gpuDiscoveryInterval": "5m",
+            "hardware": {"consecutiveFailures": 6},
+        }
+
+        self.mock_gpu_discovery.discover_gpus.side_effect = GPUDiscoveryError("timeout")
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        self.mock_kueue.quarantine_flavor.assert_not_called()
+        self.mock_kueue.set_flavor_health.assert_not_called()
+
+    def test_quarantine_failure_does_not_raise(self) -> None:
+        from hearth.core.gpu_discovery import GPUDiscoveryError
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Valid"}
+        spec = {
+            "kubeconfigSecret": "kc",
+            "gpuDiscoveryInterval": "5m",
+            "hardware": {"consecutiveFailures": 4},
+        }
+        self.mock_gpu_discovery.discover_gpus.side_effect = GPUDiscoveryError("timeout")
+        self.mock_kueue.quarantine_flavor.side_effect = RuntimeError("api down")
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        assert patch_obj.status["kubeconfigStatus"] == "Unreachable"
+
+    def test_recovery_from_unreachable_restores_quota(self) -> None:
+        from hearth.core.gpu_discovery import DiscoveredGPU, DiscoveryResult
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Unreachable"}
+        spec = {"kubeconfigSecret": "kc-cluster-1", "gpuDiscoveryInterval": "5m"}
+
+        result = DiscoveryResult(
+            gpus=(DiscoveredGPU("nvidia", "A100", "a100", 8, 2),),
+            total_gpus=8,
+            timestamp="2026-04-29T10:00:00Z",
+        )
+        self.mock_gpu_discovery.discover_gpus.return_value = result
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        assert patch_obj.status["kubeconfigStatus"] == "Valid"
+        self.mock_kueue.update_flavor_quotas.assert_called_once_with(
+            "cluster-1", [("a100", 8)], cluster_slot_quota=100
+        )
+        self.mock_kueue.set_flavor_health.assert_called_once_with("cluster-1", healthy=True)
+
+    def test_recovery_restore_failure_does_not_raise(self) -> None:
+        from hearth.core.gpu_discovery import DiscoveredGPU, DiscoveryResult
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Unreachable"}
+        spec = {"kubeconfigSecret": "kc-cluster-1", "gpuDiscoveryInterval": "5m"}
+
+        result = DiscoveryResult(
+            gpus=(DiscoveredGPU("nvidia", "A100", "a100", 8, 2),),
+            total_gpus=8,
+            timestamp="2026-04-29T10:00:00Z",
+        )
+        self.mock_gpu_discovery.discover_gpus.return_value = result
+        self.mock_kueue.update_flavor_quotas.side_effect = RuntimeError("api down")
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        assert patch_obj.status["kubeconfigStatus"] == "Valid"
+
+    def test_healthy_recovery_does_not_touch_quota(self) -> None:
+        """When already Valid, a normal successful discovery should not call
+        quota-restore paths (only the Unreachable -> Valid transition does)."""
+        from hearth.core.gpu_discovery import DiscoveredGPU, DiscoveryResult
+
+        patch_obj = self._make_patch()
+        status = {"kubeconfigStatus": "Valid"}
+        spec = {"kubeconfigSecret": "kc-cluster-1", "gpuDiscoveryInterval": "5m"}
+
+        result = DiscoveryResult(
+            gpus=(DiscoveredGPU("nvidia", "A100", "a100", 8, 2),),
+            total_gpus=8,
+            timestamp="2026-04-29T10:00:00Z",
+        )
+        self.mock_gpu_discovery.discover_gpus.return_value = result
+
+        _reconcile_gpu_discovery(spec, "cluster-1", status, patch_obj)
+
+        self.mock_kueue.set_flavor_health.assert_not_called()
 
 
 class TestReconcileLockJob(_PatchBase):

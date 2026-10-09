@@ -249,6 +249,138 @@ class TestUpdateFlavorQuotas:
         assert l40s_entry["nominalQuota"] == 0
 
 
+class TestUpdateFlavorQuotasClusterSlotOverride:
+    def _make_cq_with_flavor(self, flavor_name: str, slot_quota: int = 100) -> dict:
+        return {
+            "spec": {
+                "resourceGroups": [
+                    {
+                        "coveredResources": ["fournos/cluster-slot", "fournos/gpu-a100"],
+                        "flavors": [
+                            {
+                                "name": flavor_name,
+                                "resources": [
+                                    {"name": "fournos/cluster-slot", "nominalQuota": slot_quota},
+                                    {"name": "fournos/gpu-a100", "nominalQuota": 8},
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+
+    def test_explicit_slot_quota_overrides_existing(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = self._make_cq_with_flavor("cluster-1")
+        kueue = KueueClient(mock_custom)
+
+        kueue.update_flavor_quotas("cluster-1", [], cluster_slot_quota=0)
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        flavor = body["spec"]["resourceGroups"][0]["flavors"][0]
+        resources = {r["name"]: r["nominalQuota"] for r in flavor["resources"]}
+        assert resources["fournos/cluster-slot"] == 0
+        assert resources["fournos/gpu-a100"] == 0
+
+    def test_explicit_slot_quota_restores(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = self._make_cq_with_flavor(
+            "cluster-1", slot_quota=0
+        )
+        kueue = KueueClient(mock_custom)
+
+        kueue.update_flavor_quotas("cluster-1", [("a100", 8)], cluster_slot_quota=100)
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        flavor = body["spec"]["resourceGroups"][0]["flavors"][0]
+        resources = {r["name"]: r["nominalQuota"] for r in flavor["resources"]}
+        assert resources["fournos/cluster-slot"] == 100
+        assert resources["fournos/gpu-a100"] == 8
+
+    def test_no_override_preserves_existing_slot(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = self._make_cq_with_flavor(
+            "cluster-1", slot_quota=100
+        )
+        kueue = KueueClient(mock_custom)
+
+        kueue.update_flavor_quotas("cluster-1", [("a100", 4)])
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        flavor = body["spec"]["resourceGroups"][0]["flavors"][0]
+        resources = {r["name"]: r["nominalQuota"] for r in flavor["resources"]}
+        assert resources["fournos/cluster-slot"] == 100
+
+
+class TestQuarantineFlavor:
+    def test_zeroes_all_resources(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.get_cluster_custom_object.return_value = {
+            "spec": {
+                "resourceGroups": [
+                    {
+                        "coveredResources": ["fournos/cluster-slot", "fournos/gpu-a100"],
+                        "flavors": [
+                            {
+                                "name": "cluster-1",
+                                "resources": [
+                                    {"name": "fournos/cluster-slot", "nominalQuota": 100},
+                                    {"name": "fournos/gpu-a100", "nominalQuota": 8},
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+        kueue = KueueClient(mock_custom)
+
+        kueue.quarantine_flavor("cluster-1")
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        flavor = body["spec"]["resourceGroups"][0]["flavors"][0]
+        resources = {r["name"]: r["nominalQuota"] for r in flavor["resources"]}
+        assert resources["fournos/cluster-slot"] == 0
+        assert resources["fournos/gpu-a100"] == 0
+
+
+class TestSetFlavorHealth:
+    def test_sets_healthy_true(self) -> None:
+        mock_custom = MagicMock()
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_health("cluster-1", healthy=True)
+
+        mock_custom.patch_cluster_custom_object.assert_called_once()
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        assert body["metadata"]["labels"]["fournos.dev/healthy"] == "true"
+
+    def test_sets_healthy_false(self) -> None:
+        mock_custom = MagicMock()
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_health("cluster-1", healthy=False)
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        assert body["metadata"]["labels"]["fournos.dev/healthy"] == "false"
+
+    def test_missing_flavor_does_not_raise(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.patch_cluster_custom_object.side_effect = ApiException(status=404)
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_health("missing-cluster", healthy=False)
+
+    def test_other_api_error_propagates(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.patch_cluster_custom_object.side_effect = ApiException(status=500)
+        kueue = KueueClient(mock_custom)
+
+        with pytest.raises(ApiException):
+            kueue.set_flavor_health("cluster-1", healthy=False)
+
+
 class TestListFlavors:
     def test_returns_flavor_names(self) -> None:
         mock_custom = MagicMock()
