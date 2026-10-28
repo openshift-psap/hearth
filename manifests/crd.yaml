@@ -23,9 +23,12 @@ spec:
         - name: Owner
           type: string
           jsonPath: .spec.owner
-        - name: GPUs
+        - name: Type
           type: string
-          jsonPath: .status.gpuSummary
+          jsonPath: .spec.clusterType
+        - name: Hardware
+          type: string
+          jsonPath: .status.hardwareSummary
         - name: Kubeconfig
           type: string
           jsonPath: .status.kubeconfigStatus
@@ -61,6 +64,20 @@ spec:
                   description: >-
                     Name of the K8s Secret holding the kubeconfig for this
                     target cluster. Must exist in the secrets namespace.
+                clusterType:
+                  type: string
+                  enum:
+                    - auto
+                    - gpu
+                    - cpu
+                  default: auto
+                  description: >-
+                    Cluster hardware type. When set to "cpu", GPU discovery is
+                    skipped and the cluster is treated as a CPU-only compute
+                    target. When "auto" (default), the controller discovers
+                    hardware by inspecting node resources. When "gpu", behavior
+                    matches "auto" (discovery runs); the value is reserved for
+                    future policy differences.
                 owner:
                   type: string
                   description: >-
@@ -136,6 +153,13 @@ spec:
                     while the cluster is locked.
                 gpuSummary:
                   type: string
+                  description: >-
+                    Deprecated alias for hardwareSummary. Use hardwareSummary instead.
+                hardwareSummary:
+                  type: string
+                  description: >-
+                    Human-readable hardware summary, e.g. "2x L40S" for GPU clusters
+                    or "CPU-only" for CPU clusters.
                 conditions:
                   type: array
                   items:

@@ -47,9 +47,16 @@ def _make_condition(
     }
 
 
-def _build_gpu_summary(gpus: list[dict]) -> str:
+def _condition_is_true(status: dict, cond_type: str) -> bool:
+    for cond in status.get("conditions") or []:
+        if cond.get("type") == cond_type:
+            return cond.get("status") == "True"
+    return False
+
+
+def _build_hardware_summary(gpus: list[dict], cluster_type: str = "auto") -> str:
     if not gpus:
-        return ""
+        return "CPU-only" if cluster_type == "cpu" else ""
     parts = [f"{g['count']}x {g['shortName'].upper()}" for g in gpus]
     return ", ".join(parts)
 
@@ -80,17 +87,29 @@ def on_cluster_create(spec, name, namespace, status, patch, body, **kwargs):
     logger.info("FournosCluster %s: initializing", name)
 
     kubeconfig_status = _check_kubeconfig(spec)
+    cluster_type = spec.get("clusterType", "auto")
 
     patch.status["kubeconfigStatus"] = kubeconfig_status
     patch.status["locked"] = False
-    patch.status["conditions"] = [
-        _make_condition(
-            COND_KUBECONFIG_VALID,
-            "True" if kubeconfig_status == "Valid" else "False",
-            kubeconfig_status,
-        ),
-        _make_condition(COND_GPU_DISCOVERED, "False", "Pending"),
-    ]
+
+    kubeconfig_cond = _make_condition(
+        COND_KUBECONFIG_VALID,
+        "True" if kubeconfig_status == "Valid" else "False",
+        kubeconfig_status,
+    )
+
+    if cluster_type == "cpu":
+        patch.status["hardwareSummary"] = "CPU-only"
+        patch.status["gpuSummary"] = "CPU-only"
+        patch.status["conditions"] = [
+            kubeconfig_cond,
+            _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster"),
+        ]
+    else:
+        patch.status["conditions"] = [
+            kubeconfig_cond,
+            _make_condition(COND_GPU_DISCOVERED, "False", "Pending"),
+        ]
 
     ctx.kueue.create_flavor(name)
     ctx.kueue.add_flavor_to_cluster_queue(name)
@@ -99,7 +118,12 @@ def on_cluster_create(spec, name, namespace, status, patch, body, **kwargs):
     if owner:
         _apply_lock(spec, name, patch, owner)
 
-    logger.info("FournosCluster %s: initialized (kubeconfig=%s)", name, kubeconfig_status)
+    logger.info(
+        "FournosCluster %s: initialized (kubeconfig=%s, type=%s)",
+        name,
+        kubeconfig_status,
+        cluster_type,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -120,15 +144,18 @@ def on_hardware_change(spec, name, old, new, patch, **kwargs):
 
     gpus = new.get("gpus", [])
     gpu_resources = [(g["shortName"], g["count"]) for g in gpus]
+    cluster_type = spec.get("clusterType", "auto")
 
-    if gpu_resources:
+    if gpu_resources or cluster_type == "cpu":
         try:
             ctx.kueue.update_flavor_quotas(name, gpu_resources)
             logger.info("FournosCluster %s: updated CQ quotas from spec.hardware", name)
         except Exception as exc:
             logger.warning("FournosCluster %s: failed to update flavor quotas: %s", name, exc)
 
-    patch.status["gpuSummary"] = _build_gpu_summary(gpus)
+    summary = _build_hardware_summary(gpus, cluster_type)
+    patch.status["hardwareSummary"] = summary
+    patch.status["gpuSummary"] = summary
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +313,12 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
     if status.get("kubeconfigStatus") != "Valid":
         return
 
+    cluster_type = spec.get("clusterType", "auto")
+
+    if cluster_type == "cpu":
+        _reconcile_cpu_cluster(spec, name, status, patch)
+        return
+
     hardware = spec.get("hardware") or {}
     last_discovery_str = hardware.get("lastDiscovery")
 
@@ -359,6 +392,33 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
     patch.status.setdefault("conditions", []).append(
         _make_condition(COND_GPU_DISCOVERED, "True", "Discovered")
     )
+
+
+def _reconcile_cpu_cluster(spec, name, status, patch):
+    hardware = spec.get("hardware") or {}
+
+    if hardware.get("lastDiscovery"):
+        if status.get("hardwareSummary") != "CPU-only":
+            patch.status["hardwareSummary"] = "CPU-only"
+        if status.get("gpuSummary") != "CPU-only":
+            patch.status["gpuSummary"] = "CPU-only"
+        return
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    patch.spec["hardware"] = {
+        "gpus": [],
+        "totalGPUs": 0,
+        "lastDiscovery": timestamp,
+        "consecutiveFailures": 0,
+        "lastError": None,
+    }
+    patch.status["hardwareSummary"] = "CPU-only"
+    patch.status["gpuSummary"] = "CPU-only"
+    if not _condition_is_true(status, COND_GPU_DISCOVERED):
+        patch.status.setdefault("conditions", []).append(
+            _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster")
+        )
+    logger.info("FournosCluster %s: CPU-only cluster registered", name)
 
 
 def _reconcile_lock_job(spec, name, status, patch):

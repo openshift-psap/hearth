@@ -116,17 +116,20 @@ Hearth detects the label and creates a FournosCluster CR:
 
 ```bash
 oc get fournoscluster -n hearth
-# NAME           OWNER   GPUS          KUBECONFIG   LOCKED   AGE
-# cluster-name                         Valid         false    10s
+# NAME           OWNER   TYPE   HARDWARE      KUBECONFIG   LOCKED   AGE
+# cluster-name          auto                    Valid         false    10s
 ```
+
+For CPU-only targets (e.g. forge/rhaiis-cpu), set `spec.clusterType: cpu` on the
+FournosCluster; GPU discovery is skipped and status shows `CPU-only`.
 
 ### Step 4: Verify GPU discovery
 
-GPU discovery runs automatically (default: every 5 minutes):
+GPU discovery runs automatically for `clusterType` `auto` or `gpu` (default: every 5 minutes):
 
 ```bash
-oc get fournoscluster <cluster-name> -n hearth -o jsonpath='{.status.gpuSummary}'
-# Example: "2x NVIDIA-L40S"
+oc get fournoscluster <cluster-name> -n hearth -o jsonpath='{.status.hardwareSummary}'
+# Example: "2x L40S" (also mirrored on .status.gpuSummary)
 
 # Detailed GPU info
 oc get fournoscluster <cluster-name> -n hearth -o jsonpath='{.spec.hardware.gpus}' | python3 -m json.tool
