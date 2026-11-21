@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -379,6 +380,53 @@ class TestSetFlavorHealth:
 
         with pytest.raises(ApiException):
             kueue.set_flavor_health("cluster-1", healthy=False)
+
+
+class TestSetFlavorFreeBlocks:
+    def test_publishes_sorted_blocks_as_json(self) -> None:
+        mock_custom = MagicMock()
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_free_blocks("cluster-1", {"a100": [4, 4], "h200": [8]})
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        raw = body["metadata"]["annotations"]["fournos.dev/free-gpu-blocks"]
+        assert json.loads(raw) == {"a100": [4, 4], "h200": [8]}
+
+    def test_none_removes_annotation(self) -> None:
+        mock_custom = MagicMock()
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_free_blocks("cluster-1", None)
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        # A null value in a merge patch deletes the key.
+        assert body["metadata"]["annotations"]["fournos.dev/free-gpu-blocks"] is None
+
+    def test_empty_dict_claims_cluster_is_full(self) -> None:
+        mock_custom = MagicMock()
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_free_blocks("cluster-1", {})
+
+        body = mock_custom.patch_cluster_custom_object.call_args[1]["body"]
+        raw = body["metadata"]["annotations"]["fournos.dev/free-gpu-blocks"]
+        assert json.loads(raw) == {}
+
+    def test_missing_flavor_does_not_raise(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.patch_cluster_custom_object.side_effect = ApiException(status=404)
+        kueue = KueueClient(mock_custom)
+
+        kueue.set_flavor_free_blocks("missing-cluster", {"a100": [4]})
+
+    def test_other_api_error_propagates(self) -> None:
+        mock_custom = MagicMock()
+        mock_custom.patch_cluster_custom_object.side_effect = ApiException(status=500)
+        kueue = KueueClient(mock_custom)
+
+        with pytest.raises(ApiException):
+            kueue.set_flavor_free_blocks("cluster-1", {"a100": [4]})
 
 
 class TestListFlavors:

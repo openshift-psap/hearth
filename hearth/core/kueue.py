@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from kubernetes import client
 
-from hearth.constants import CLUSTER_SLOT_RESOURCE, LABEL_FLAVOR_HEALTHY, MAX_CLUSTER_SLOTS
+from hearth.constants import (
+    ANNOTATION_FREE_GPU_BLOCKS,
+    CLUSTER_SLOT_RESOURCE,
+    LABEL_FLAVOR_HEALTHY,
+    MAX_CLUSTER_SLOTS,
+)
 from hearth.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -225,3 +231,34 @@ class KueueClient:
                 logger.warning("ResourceFlavor %s not found, cannot set health label", flavor_name)
                 return
             raise
+
+    def set_flavor_free_blocks(self, flavor_name: str, blocks: dict[str, list[int]] | None) -> None:
+        """Publish per-node free GPU blocks on a ResourceFlavor.
+
+        ``blocks`` maps a GPU short name to the free GPU counts of the nodes
+        that hold it, so a scheduler can check that a multi-GPU request fits on
+        one node rather than across several. ``None`` removes the annotation,
+        which tells consumers that free capacity is unknown.
+        """
+        annotations = {
+            ANNOTATION_FREE_GPU_BLOCKS: None
+            if blocks is None
+            else json.dumps(blocks, sort_keys=True)
+        }
+        body = {"metadata": {"annotations": annotations}}
+        try:
+            self._k8s.patch_cluster_custom_object(
+                group=KUEUE_GROUP,
+                version=KUEUE_VERSION,
+                plural=KUEUE_RESOURCE_FLAVOR_PLURAL,
+                name=flavor_name,
+                body=body,
+            )
+        except client.exceptions.ApiException as exc:
+            if exc.status == 404:
+                logger.debug(
+                    "ResourceFlavor %s not found, cannot publish free GPU blocks", flavor_name
+                )
+                return
+            raise
+        logger.debug("ResourceFlavor %s free GPU blocks: %s", flavor_name, blocks)

@@ -333,6 +333,7 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
                 try:
                     ctx.kueue.quarantine_flavor(name)
                     ctx.kueue.set_flavor_health(name, healthy=False)
+                    ctx.kueue.set_flavor_free_blocks(name, None)
                     logger.warning(
                         "FournosCluster %s: marked unreachable, quarantined ResourceFlavor",
                         name,
@@ -381,6 +382,26 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
     patch.status.setdefault("conditions", []).append(
         _make_condition(COND_GPU_DISCOVERED, "True", "Discovered")
     )
+
+    # Free blocks are per node, not per cluster: a request that needs 8 GPUs
+    # cannot use 4+4 on two nodes. Publish them so Fournos can check that a
+    # job's shape fits before it creates the Kueue Workload. An empty node
+    # list means pod usage was unreadable, so remove the annotation rather
+    # than claiming the cluster is full.
+    if result.nodes:
+        free_blocks: dict[str, list[int]] = {}
+        for node in result.nodes:
+            if node.free > 0:
+                free_blocks.setdefault(node.short_name, []).append(node.free)
+        for sizes in free_blocks.values():
+            sizes.sort(reverse=True)
+        published_blocks: dict[str, list[int]] | None = free_blocks
+    else:
+        published_blocks = None
+    try:
+        ctx.kueue.set_flavor_free_blocks(name, published_blocks)
+    except Exception as blocks_exc:  # noqa: BLE001 - publishing is best effort
+        logger.warning("FournosCluster %s: failed to publish free GPU blocks: %s", name, blocks_exc)
 
     if was_unreachable:
         patch.status["kubeconfigStatus"] = "Valid"
