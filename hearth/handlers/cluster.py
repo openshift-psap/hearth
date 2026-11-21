@@ -13,6 +13,7 @@ from hearth.constants import (
     CRD_VERSION,
     FOURNOSJOB_PLURAL,
     LABEL_CLUSTER_LOCK,
+    MAX_CLUSTER_SLOTS,
 )
 from hearth.core.gpu_discovery import GPUDiscoveryError
 from hearth.settings import settings
@@ -94,6 +95,7 @@ def on_cluster_create(spec, name, namespace, status, patch, body, **kwargs):
 
     ctx.kueue.create_flavor(name)
     ctx.kueue.add_flavor_to_cluster_queue(name)
+    ctx.kueue.set_flavor_health(name, healthy=True)
 
     owner = spec.get("owner")
     if owner:
@@ -283,7 +285,11 @@ def _reconcile_ttl_expiry(spec, name, status, patch):
 
 
 def _reconcile_gpu_discovery(spec, name, status, patch):
-    if status.get("kubeconfigStatus") != "Valid":
+    # "Unreachable" is set by this function itself after repeated connectivity
+    # failures (as opposed to "Missing"/"Invalid", which come from the
+    # kubeconfig *secret* check). Discovery must keep retrying while
+    # Unreachable, or a cluster could never self-heal.
+    if status.get("kubeconfigStatus") not in ("Valid", "Unreachable"):
         return
 
     hardware = spec.get("hardware") or {}
@@ -310,6 +316,8 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
         except (ValueError, TypeError):
             pass
 
+    was_unreachable = status.get("kubeconfigStatus") == "Unreachable"
+
     try:
         result = ctx.gpu_discovery.discover_gpus(
             name, spec["kubeconfigSecret"], settings.secrets_namespace
@@ -321,6 +329,21 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
 
         if failures >= 5:
             patch.status["kubeconfigStatus"] = "Unreachable"
+            if not was_unreachable:
+                try:
+                    ctx.kueue.quarantine_flavor(name)
+                    ctx.kueue.set_flavor_health(name, healthy=False)
+                    ctx.kueue.set_flavor_free_blocks(name, None)
+                    logger.warning(
+                        "FournosCluster %s: marked unreachable, quarantined ResourceFlavor",
+                        name,
+                    )
+                except Exception as quarantine_exc:
+                    logger.warning(
+                        "FournosCluster %s: failed to quarantine flavor: %s",
+                        name,
+                        quarantine_exc,
+                    )
 
         patch.status.setdefault("conditions", []).append(
             _make_condition(
@@ -359,6 +382,40 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
     patch.status.setdefault("conditions", []).append(
         _make_condition(COND_GPU_DISCOVERED, "True", "Discovered")
     )
+
+    # Free blocks are per node, not per cluster: a request that needs 8 GPUs
+    # cannot use 4+4 on two nodes. Publish them so Fournos can check that a
+    # job's shape fits before it creates the Kueue Workload. An empty node
+    # list means pod usage was unreadable, so remove the annotation rather
+    # than claiming the cluster is full.
+    if result.nodes:
+        free_blocks: dict[str, list[int]] = {}
+        for node in result.nodes:
+            if node.free > 0:
+                free_blocks.setdefault(node.short_name, []).append(node.free)
+        for sizes in free_blocks.values():
+            sizes.sort(reverse=True)
+        published_blocks: dict[str, list[int]] | None = free_blocks
+    else:
+        published_blocks = None
+    try:
+        ctx.kueue.set_flavor_free_blocks(name, published_blocks)
+    except Exception as blocks_exc:  # noqa: BLE001 - publishing is best effort
+        logger.warning("FournosCluster %s: failed to publish free GPU blocks: %s", name, blocks_exc)
+
+    if was_unreachable:
+        patch.status["kubeconfigStatus"] = "Valid"
+        gpu_resources = [(g["shortName"], g["count"]) for g in gpu_dicts]
+        try:
+            ctx.kueue.update_flavor_quotas(
+                name, gpu_resources, cluster_slot_quota=MAX_CLUSTER_SLOTS
+            )
+            ctx.kueue.set_flavor_health(name, healthy=True)
+            logger.info("FournosCluster %s: recovered, restored ResourceFlavor quota", name)
+        except Exception as restore_exc:
+            logger.warning(
+                "FournosCluster %s: failed to restore flavor quota: %s", name, restore_exc
+            )
 
 
 def _reconcile_lock_job(spec, name, status, patch):

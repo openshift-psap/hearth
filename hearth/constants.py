@@ -2,6 +2,8 @@ LABEL_MANAGED_BY = "app.kubernetes.io/managed-by"
 LABEL_CLUSTER_LOCK = "fournos.dev/cluster-lock"
 LABEL_AUTO_DISCOVERED = "fournos.dev/auto-discovered"
 LABEL_CLUSTER_KUBECONFIG = "fournos.dev/cluster-kubeconfig"
+LABEL_FLAVOR_HEALTHY = "fournos.dev/healthy"
+ANNOTATION_FREE_GPU_BLOCKS = "fournos.dev/free-gpu-blocks"
 
 CLUSTER_SLOT_RESOURCE = "fournos/cluster-slot"
 MAX_CLUSTER_SLOTS = 100
